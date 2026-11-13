@@ -1,0 +1,13 @@
+pandas
+numpy
+matplotlib
+geopandas
+osmnx
+networkx
+lxml
+osmium
+folium
+scipy
+scikit-learn
+notebook
+ipykernel

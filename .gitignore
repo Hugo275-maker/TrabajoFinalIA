@@ -1,0 +1,19 @@
+# Entorno de Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Datos pesados o regenerables
+data/osm/fuente/
+data/osm/_cache/
+data/osm/partes/
+data/osm/calles_lima.graphml
+data/osm_mock/
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
