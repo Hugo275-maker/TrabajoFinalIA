@@ -3,7 +3,7 @@ import json
 import random
 from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -211,6 +211,9 @@ class SimuladorRequest(BaseModel):
     alpha: float = Field(default=0.45, ge=0.1, le=2.0)
     epochs: int = Field(default=100, ge=20, le=250)
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(WEB_DIR / "static" / "images" / "favicon.png")
 
 @app.get("/", response_class=HTMLResponse)
 async def inicio(request: Request):
