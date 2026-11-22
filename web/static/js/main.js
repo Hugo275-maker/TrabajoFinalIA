@@ -13,6 +13,15 @@ let chartEstrategias = null;
 let chartTop15 = null;
 let chartConvergencia = null;
 
+let mapRiesgo = null;
+let marcaRiesgo = null;
+let tramoRiesgo = null;
+let mapRutas = null;
+let capaRuta = null;
+let ubigeoRuta = null;
+const COLOR_NIVEL_DISTRITO = { bajo: "#fde68a", medio: "#fb923c", alto: "#dc2626" };
+const NOMBRE_NIVEL = { bajo: "baja", medio: "media", alto: "alta" };
+
 function colorSecuencial(valor, maxVal, paleta = "azul") {
   const r = maxVal > 0 ? Math.min(1, Math.max(0, valor / maxVal)) : 0;
   if (paleta === "verde") {
@@ -46,7 +55,7 @@ async function iniciar() {
 
   renderResumen();
   renderTablaPrediccion(ESTADO.distritos);
-  renderTablaRutas("150101");
+  llenarSelectorRutas();
   renderTop15(DISTRITOS_ACTUAL);
   renderConvergencia(
     ESTADO.convergencia_inicial.mejor,
@@ -91,7 +100,7 @@ function renderResumen() {
     <li><strong>Mayor cobertura sin inversión en flota:</strong> con las mismas <strong>${k.flota_total.toLocaleString("es-PE")}</strong> patrullas operativas de RENAMU 2026, el Algoritmo Genético eleva la cobertura provincial de <strong>${k.cobertura_renamu.toFixed(2)} %</strong> a <strong>${k.cobertura_ga.toFixed(2)} %</strong> (<strong>${signo}${k.ganancia_vs_renamu.toFixed(2)} pp</strong>).</li>
     <li><strong>Focos críticos reforzados:</strong> ${masReforzados} reciben el mayor incremento de unidades debido a su alta densidad de robos y hurtos por km².</li>
     <li><strong>Reasignación de excedentes:</strong> se redistribuyen unidades desde distritos con menor cobertura marginal como ${masExcedentes}, manteniendo siempre el mínimo operativo en los 43 distritos.</li>
-    <li><strong>Enrutamiento táctico (A*):</strong> en los distritos piloto (Cercado de Lima y San Juan de Lurigancho), las rutas priorizan calles con índice de riesgo &gt; 0.5 con un alargamiento mínimo del recorrido.</li>
+    <li><strong>Enrutamiento táctico (A*):</strong> los <strong>${ESTADO.distritos_con_ruta.length}</strong> distritos de peligrosidad media y alta tienen una ruta desde su comisaría que prioriza calles con índice de riesgo &gt; 0.5 con un alargamiento mínimo del recorrido.</li>
   `;
 
   const etiquetasBarrasPlugin = {
@@ -500,10 +509,153 @@ function renderConvergencia(mejor, promedio, fitRenamu, fitParejo) {
   });
 }
 
-function renderTablaRutas(ubigeo) {
-  const filas = ESTADO.rutas_piloto.filter((r) => r.ubigeo === ubigeo);
-  const tbody = document.getElementById("tbody-rutas");
-  tbody.innerHTML = filas.map((r) => `
+function escaparHtml(texto) {
+  return String(texto ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function capaBase(mapa) {
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap colaboradores",
+  }).addTo(mapa);
+  L.control.zoom({ position: "bottomright" }).addTo(mapa);
+}
+
+/* ---------- Riesgo por calle (clic en el mapa) ---------- */
+
+async function consultarRiesgo(lat, lon) {
+  const resp = await fetch(`/api/riesgo-punto?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}`);
+  if (!resp.ok) throw new Error("fuera de Lima");
+  return resp.json();
+}
+
+function lugaresCercanos(c) {
+  const partes = [];
+  if (c.paraderos) partes.push(`${c.paraderos} paradero${c.paraderos > 1 ? "s" : ""}`);
+  if (c.mercados) partes.push(`${c.mercados} mercado${c.mercados > 1 ? "s" : ""}`);
+  if (c.bancos_cajeros) partes.push(`${c.bancos_cajeros} ${c.bancos_cajeros > 1 ? "bancos o cajeros" : "banco o cajero"}`);
+  return partes;
+}
+
+function veredicto(res) {
+  const c = res.calle;
+  const d = res.distrito;
+  const textoDistrito = d
+    ? `${formatoTitulo(d.distrito)} tiene peligrosidad <strong>${NOMBRE_NIVEL[d.nivel] || d.nivel}</strong> (${d.densidad} denuncias esperadas por km² el próximo mes).`
+    : "";
+  if (!c) {
+    return { nivel: d ? d.nivel : "", texto: `No hay calles registradas a menos de 150 m de este punto. ${textoDistrito}` };
+  }
+  const lugares = lugaresCercanos(c);
+  const cerca = lugares.length
+    ? `Tiene cerca (a menos de 100 m) ${lugares.join(", ")}.`
+    : "No tiene paraderos, mercados ni bancos a menos de 100 m.";
+  const frases = {
+    alto: "<strong>Calle de riesgo alto.</strong> Está entre el 3 % de calles de Lima con más factores de riesgo: es prioridad para el patrullaje.",
+    medio: "<strong>Calle de riesgo medio.</strong> Tiene más factores de riesgo que 9 de cada 10 calles de Lima.",
+    bajo: "<strong>Calle de riesgo bajo.</strong> Tiene pocos o ningún factor de riesgo cerca.",
+  };
+  return { nivel: c.nivel, texto: `${frases[c.nivel]} ${cerca} ${textoDistrito}` };
+}
+
+function htmlPanelRiesgo(res) {
+  const c = res.calle;
+  const d = res.distrito;
+  if (!d && !c) return `<p class="muted">Este punto está fuera de Lima Metropolitana.</p>`;
+  const v = veredicto(res);
+  let html = `<div class="veredicto ${v.nivel}">${v.texto}</div>`;
+  if (c) {
+    html += `
+      <div>
+        <div class="fila-dato"><span>Calle</span><strong>${escaparHtml(c.nombre)}</strong></div>
+        <div class="fila-dato"><span>Índice de riesgo</span><span><strong>${c.riesgo.toFixed(2)}</strong> / 1 · <span class="nivel ${c.nivel}">${c.nivel}</span></span></div>
+        <div class="barra-riesgo" aria-hidden="true"><span class="marca" style="left:${Math.min(100, c.riesgo * 100)}%"></span></div>
+        <div class="fila-dato"><span>Paraderos · mercados · bancos (100 m)</span><strong>${c.paraderos} · ${c.mercados} · ${c.bancos_cajeros}</strong></div>
+        <div class="fila-dato"><span>Distancia al punto</span><span>${Math.round(c.distancia_m)} m</span></div>
+      </div>`;
+  }
+  if (d) {
+    html += `
+      <div>
+        <div class="fila-dato"><span>Distrito</span><strong>${formatoTitulo(d.distrito)} (${d.ubigeo})</strong></div>
+        <div class="fila-dato"><span>Peligrosidad del distrito</span><span class="nivel ${d.nivel}">${NOMBRE_NIVEL[d.nivel] || d.nivel}</span></div>
+        <div class="fila-dato"><span>Denuncias esperadas (mes sig.)</span><strong>${d.d_esperadas}</strong></div>
+        <div class="fila-dato"><span>Patrullas asignadas por el GA</span><strong>${d.patrullas_ga}</strong></div>
+      </div>`;
+    if (d.con_ruta) {
+      html += `<button class="btn-secondary" type="button" data-ver-ruta="${d.ubigeo}">Ver la ruta de patrullaje de ${formatoTitulo(d.distrito)}</button>`;
+    }
+  }
+  return html;
+}
+
+function resaltarTramo(mapa, calle, capaPrevia) {
+  if (capaPrevia) mapa.removeLayer(capaPrevia);
+  if (!calle) return null;
+  const colores = { alto: "#7f1d1d", medio: "#c2410c", bajo: "#15803d" };
+  return L.polyline(calle.coords, { color: colores[calle.nivel], weight: 8, opacity: 0.9, interactive: false }).addTo(mapa);
+}
+
+function initMapaRiesgo() {
+  if (!mapRiesgo) {
+    mapRiesgo = L.map("map-riesgo", { zoomControl: false }).setView([-12.06, -77.03], 12);
+    capaBase(mapRiesgo);
+    const porUbigeo = Object.fromEntries(ESTADO.distritos.map((d) => [d.ubigeo, d]));
+    L.geoJSON(GEOJSON, {
+      style: (feat) => {
+        const d = porUbigeo[String(feat.properties.UBIGEO || "").padStart(6, "0")];
+        return { fillColor: COLOR_NIVEL_DISTRITO[d?.nivel] || "#e2e8f0", fillOpacity: 0.28, weight: 1, color: "#475569" };
+      },
+      onEachFeature: (feat, layer) => {
+        const d = porUbigeo[String(feat.properties.UBIGEO || "").padStart(6, "0")];
+        if (d) layer.bindTooltip(`<strong>${formatoTitulo(d.distrito)}</strong><br>Peligrosidad ${NOMBRE_NIVEL[d.nivel] || d.nivel}`, { sticky: true });
+      },
+    }).addTo(mapRiesgo);
+
+    mapRiesgo.on("click", async (e) => {
+      const panel = document.getElementById("panel-riesgo");
+      panel.innerHTML = `<p class="muted">Buscando la calle más cercana...</p>`;
+      if (marcaRiesgo) mapRiesgo.removeLayer(marcaRiesgo);
+      marcaRiesgo = L.circleMarker(e.latlng, { radius: 6, color: "#0f172a", weight: 2, fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(mapRiesgo);
+      try {
+        const res = await consultarRiesgo(e.latlng.lat, e.latlng.lng);
+        tramoRiesgo = resaltarTramo(mapRiesgo, res.calle, tramoRiesgo);
+        marcaRiesgo.bringToFront();
+        panel.innerHTML = htmlPanelRiesgo(res);
+      } catch (err) {
+        tramoRiesgo = resaltarTramo(mapRiesgo, null, tramoRiesgo);
+        panel.innerHTML = `<p class="muted">Este punto está fuera de Lima Metropolitana.</p>`;
+      }
+    });
+
+    document.getElementById("panel-riesgo").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-ver-ruta]");
+      if (!btn) return;
+      document.getElementById("select-ruta").value = btn.dataset.verRuta;
+      document.querySelector('.tab-btn[data-tab="rutas"]').click();
+    });
+  }
+  setTimeout(() => mapRiesgo.invalidateSize(), 150);
+}
+
+/* ---------- Rutas por distrito ---------- */
+
+function llenarSelectorRutas() {
+  const select = document.getElementById("select-ruta");
+  const conRuta = new Set(ESTADO.distritos_con_ruta);
+  const grupos = [["alto", "Peligrosidad alta"], ["medio", "Peligrosidad media"]];
+  select.innerHTML = grupos.map(([nivel, etiqueta]) => {
+    const opciones = ESTADO.distritos
+      .filter((d) => conRuta.has(d.ubigeo) && d.nivel === nivel)
+      .sort((a, b) => a.distrito.localeCompare(b.distrito))
+      .map((d) => `<option value="${d.ubigeo}">${formatoTitulo(d.distrito)} (${d.ubigeo})</option>`)
+      .join("");
+    return opciones ? `<optgroup label="${etiqueta}">${opciones}</optgroup>` : "";
+  }).join("");
+  if (conRuta.has("150101")) select.value = "150101";
+}
+
+function renderTablaRutas(ubigeo, ruta) {
+  document.getElementById("tbody-rutas").innerHTML = ruta.resumen.map((r) => `
     <tr>
       <td class="num"><strong>${r.beta.toFixed(1)}</strong></td>
       <td class="num">${r.km.toFixed(3)}</td>
@@ -512,7 +664,75 @@ function renderTablaRutas(ubigeo) {
       <td class="num">${r.segundos.toFixed(3)}</td>
     </tr>
   `).join("");
-  document.getElementById("iframe-ruta").src = `/mapas/ruta_${ubigeo}.html`;
+  const d = ruta.distrito;
+  document.getElementById("info-ruta").innerHTML =
+    `<strong>${formatoTitulo(d.distrito)}</strong> · peligrosidad ${NOMBRE_NIVEL[d.nivel] || d.nivel} · sale de <strong>${escaparHtml(ruta.comisaria)}</strong> y visita ${ruta.puntos.length} puntos críticos en el orden numerado.`;
+}
+
+async function cargarRuta(ubigeo) {
+  ubigeoRuta = ubigeo;
+  const [respRuta, respCalles] = await Promise.all([
+    fetch(`/api/ruta/${ubigeo}`),
+    fetch(`/api/riesgo-distrito/${ubigeo}`),
+  ]);
+  if (!respRuta.ok || ubigeo !== ubigeoRuta) return;
+  const ruta = await respRuta.json();
+  const calles = respCalles.ok ? await respCalles.json() : [];
+
+  if (capaRuta) mapRutas.removeLayer(capaRuta);
+  capaRuta = L.layerGroup().addTo(mapRutas);
+  const lienzo = L.canvas({ padding: 0.3 });
+  calles.forEach((t) => {
+    L.polyline(t.c, {
+      renderer: lienzo,
+      color: t.r >= 0.5 ? "#7f1d1d" : "#f59e0b",
+      weight: t.r >= 0.5 ? 3 : 2,
+      opacity: 0.75,
+      interactive: false,
+    }).addTo(capaRuta);
+  });
+  L.polyline(ruta.rutas["0"], { color: "#555555", weight: 4, opacity: 0.8, dashArray: "8" })
+    .bindTooltip("Ruta más corta (β = 0)", { sticky: true }).addTo(capaRuta);
+  const principal = L.polyline(ruta.rutas["2"], { color: "#d62728", weight: 5, opacity: 0.85 })
+    .bindTooltip("Ruta con riesgo (β = 2)", { sticky: true }).addTo(capaRuta);
+  ruta.puntos.forEach((p) => {
+    L.marker([p.lat, p.lon], {
+      icon: L.divIcon({
+        className: "",
+        html: `<span style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#e4572e;border:2px solid #fff;color:#fff;font:700 11px sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.4)">${p.visita}</span>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      }),
+    }).bindTooltip(`Punto crítico, visita ${p.visita}<br>Riesgo de la esquina: ${p.riesgo.toFixed(2)}`).addTo(capaRuta);
+  });
+  L.marker(ruta.salida).bindTooltip(`Salida: ${escaparHtml(ruta.comisaria)}`).addTo(capaRuta);
+
+  mapRutas.fitBounds(principal.getBounds(), { padding: [30, 30] });
+  renderTablaRutas(ubigeo, ruta);
+}
+
+function initMapaRutas() {
+  if (!mapRutas) {
+    mapRutas = L.map("map-rutas", { zoomControl: false }).setView([-12.05, -77.03], 13);
+    capaBase(mapRutas);
+    mapRutas.on("click", async (e) => {
+      const popup = L.popup().setLatLng(e.latlng).setContent("Buscando la calle más cercana...").openOn(mapRutas);
+      try {
+        const res = await consultarRiesgo(e.latlng.lat, e.latlng.lng);
+        const c = res.calle;
+        popup.setContent(c
+          ? `<div class="popup-riesgo"><strong>${escaparHtml(c.nombre)}</strong><br>Riesgo: <strong>${c.riesgo.toFixed(2)}</strong> <span class="nivel ${c.nivel}">${c.nivel}</span><br>Paraderos · mercados · bancos: ${c.paraderos} · ${c.mercados} · ${c.bancos_cajeros}</div>`
+          : `<div class="popup-riesgo">No hay calles a menos de 150 m.</div>`);
+      } catch (err) {
+        popup.setContent(`<div class="popup-riesgo">Fuera de Lima Metropolitana.</div>`);
+      }
+    });
+  }
+  setTimeout(() => {
+    mapRutas.invalidateSize();
+    const u = document.getElementById("select-ruta").value;
+    if (u && u !== ubigeoRuta) cargarRuta(u);
+  }, 150);
 }
 
 function configurarEventos() {
@@ -526,6 +746,8 @@ function configurarEventos() {
       document.getElementById(`tab-${tab}`).classList.add("active");
       if (tab === "prediccion") initMapaPrediccion();
       if (tab === "asignacion") initMapaGA();
+      if (tab === "riesgo") initMapaRiesgo();
+      if (tab === "rutas") initMapaRutas();
     });
   });
 
@@ -558,13 +780,9 @@ function configurarEventos() {
     });
   });
 
-  // Toggle piloto rutas
-  document.querySelectorAll("#toggle-piloto .seg-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#toggle-piloto .seg-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      renderTablaRutas(btn.dataset.ubigeo);
-    });
+  // Selector de distrito en rutas
+  document.getElementById("select-ruta").addEventListener("change", (e) => {
+    if (mapRutas) cargarRuta(e.target.value);
   });
 
   // Sliders del simulador

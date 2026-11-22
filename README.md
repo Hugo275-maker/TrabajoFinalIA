@@ -22,9 +22,9 @@ docs/             Hoja de ruta y planes
 | `01_datos` | Miguel | `lima_robo_hurto_mensual.csv`, `ubigeo_lima.csv` | Todos |
 | `01b_osm` | Hugo | `areas_distritos.csv` (UBIGEO, DIST_NORM, AREA_KM2) | Flavia, Deivis |
 | `02_prediccion` | Flavia | `prediccion_distritos.csv` (UBIGEO, D_ESPERADAS) | Deivis |
-| `03_riesgo` | Hugo | `riesgo_calles.csv`, `puntos_criticos.csv` | `05_rutas` |
+| `03_riesgo` | Hugo | `riesgo_calles.csv`, `puntos_criticos.csv` (43 distritos) | `05_rutas`, web |
 | `04_ga` | Deivis | `reparto_patrullas.csv` (UBIGEO, PATRULLAS) | Informe |
-| `05_rutas` | Hugo | Mapas en `outputs/mapas/` | Informe |
+| `05_rutas` | Hugo | `rutas_resumen.csv`, `rutas_distritos.json`, `peligrosidad_distritos.csv`, mapas de los pilotos en `outputs/mapas/` | Informe, web |
 
 El UBIGEO se lee siempre como texto: `dtype={"UBIGEO": str}`.
 
@@ -57,6 +57,13 @@ Las calles y los lugares salen del extracto de Perú de Geofabrik del 8 de novie
 Las áreas de `data/processed/areas_distritos.csv` salen de los polígonos de OSM y pueden diferir algo de las cifras oficiales.
 
 `src/descargar_osm.py` es la alternativa por Overpass (distrito por distrito, continúa donde quedó si se corta). No se usa: Overpass dejó de responder a mitad de la descarga.
+
+## Web (`web/`)
+
+Aplicación FastAPI que muestra los resultados ya calculados; no entrena modelos. Se ejecuta desde la raíz con `uvicorn web.app:app` y solo necesita `web/requirements-web.txt`.
+
+* **Riesgo por calle:** al hacer clic en el mapa busca el tramo más cercano (hasta 150 m) y muestra su riesgo de `03_riesgo` y la peligrosidad del distrito. Lee `data/processed/riesgo_calles_web.csv.gz`, que se genera con `python src/exportar_riesgo_web.py` después de `03_riesgo`.
+* **Rutas:** dibuja las rutas de `rutas_distritos.json` para los distritos de peligrosidad media y alta (denuncias esperadas por km², en tercios). Los de peligrosidad baja no tienen ruta porque casi ninguna de sus calles tiene factores de riesgo.
 
 ## Instalación
 

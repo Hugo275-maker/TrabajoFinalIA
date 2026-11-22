@@ -2,7 +2,7 @@ import csv
 import json
 import random
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -15,6 +15,7 @@ from web.ga_engine import (
     reparar,
     simular_ga,
 )
+from web.riesgo_engine import IndiceRiesgo, LocalizadorDistritos
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = Path(__file__).resolve().parent
@@ -94,6 +95,8 @@ def cargar_estado_proyecto() -> dict:
     ga_rows = _leer_csv(DATA_PROCESSED / "reparto_patrullas.csv")
     ren_rows = _leer_csv(DATA_PROCESSED / "renamu_lima.csv")
     rutas_rows = _leer_csv(DATA_PROCESSED / "rutas_resumen.csv")
+    pelig_rows = _leer_csv(DATA_PROCESSED / "peligrosidad_distritos.csv")
+    pelig_map = {str(r["UBIGEO"]).strip().zfill(6): r for r in pelig_rows}
 
     pred_map = {str(r["UBIGEO"]).strip().zfill(6): float(r["D_ESPERADAS"]) for r in pred_rows}
     ga_map = {str(r["UBIGEO"]).strip().zfill(6): int(float(r["PATRULLAS"])) for r in ga_rows}
@@ -126,6 +129,9 @@ def cargar_estado_proyecto() -> dict:
             "brecha": p_ga - p_ren,
             "cobertura_ga": round(cob_ga, 2),
             "cobertura_renamu": round(cob_ren, 2),
+            # Peligrosidad: denuncias esperadas por km² en tercios (05_rutas)
+            "nivel": pelig_map.get(u, {}).get("NIVEL", "sin dato"),
+            "con_ruta": pelig_map.get(u, {}).get("CON_RUTA", "False") == "True",
         })
 
     # Reemplaza estas 2 líneas donde armas areas_vec:
@@ -147,14 +153,15 @@ def cargar_estado_proyecto() -> dict:
     fit_renamu = round(calcular_fitness(x_ren, d_esp_vec, areas_vec, ALPHA_DEFAULT), 2)
     fit_ga = round(calcular_fitness(x_ga, d_esp_vec, areas_vec, ALPHA_DEFAULT), 2)
 
-    # Procesar resumen de rutas piloto (Cercado 150101 y SJL 150132)
+    # Resumen de rutas por distrito (05_rutas): una fila por distrito y valor de β
+    nombres = {d["ubigeo"]: d["distrito"] for d in distritos}
     rutas_piloto = []
     for rr in rutas_rows:
         col_pct = next((k for k in rr.keys() if "0,5" in k or "0.5" in k or "%" in k), None)
         u_r = str(rr.get("UBIGEO", "")).strip().zfill(6)
         rutas_piloto.append({
             "ubigeo": u_r,
-            "distrito": "Cercado de Lima" if u_r == "150101" else ("San Juan de Lurigancho" if u_r == "150132" else u_r),
+            "distrito": nombres.get(u_r, u_r),
             "beta": float(rr.get("beta", 0)),
             "km": round(float(rr.get("km", 0)), 3),
             "riesgo_medio": round(float(rr.get("riesgo_medio", 0)), 3),
@@ -191,10 +198,7 @@ def cargar_estado_proyecto() -> dict:
         ],
         "distritos": distritos,
         "rutas_piloto": rutas_piloto,
-        "mapas_disponibles": {
-            "150101": (OUTPUTS_MAPAS / "ruta_150101.html").exists(),
-            "150132": (OUTPUTS_MAPAS / "ruta_150132.html").exists(),
-        },
+        "distritos_con_ruta": sorted(RUTAS),
         "convergencia_inicial": {
             "mejor": sim_base["historial_mejor"],
             "promedio": sim_base["historial_promedio"],
@@ -203,7 +207,19 @@ def cargar_estado_proyecto() -> dict:
     }
 
 
+def _cargar_rutas() -> dict:
+    ruta = DATA_PROCESSED / "rutas_distritos.json"
+    if not ruta.exists():
+        return {}
+    with open(ruta, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+RUTAS = _cargar_rutas()
 ESTADO = cargar_estado_proyecto()
+DISTRITO_POR_UBIGEO = {d["ubigeo"]: d for d in ESTADO["distritos"]}
+INDICE_RIESGO = IndiceRiesgo(DATA_PROCESSED / "riesgo_calles_web.csv.gz")
+LOCALIZADOR = LocalizadorDistritos(ESTADO["geojson"])
 
 
 class SimuladorRequest(BaseModel):
@@ -227,7 +243,7 @@ async def api_resumen():
         "estrategias": ESTADO["estrategias"],
         "distritos": ESTADO["distritos"],
         "rutas_piloto": ESTADO["rutas_piloto"],
-        "mapas_disponibles": ESTADO["mapas_disponibles"],
+        "distritos_con_ruta": ESTADO["distritos_con_ruta"],
         "convergencia_inicial": ESTADO["convergencia_inicial"],
     })
 
@@ -235,6 +251,49 @@ async def api_resumen():
 @app.get("/api/geojson")
 async def api_geojson():
     return JSONResponse(ESTADO["geojson"])
+
+
+def _info_distrito(u):
+    d = DISTRITO_POR_UBIGEO.get(u)
+    if not d:
+        return None
+    return {k: d[k] for k in ("ubigeo", "distrito", "nivel", "densidad", "d_esperadas", "patrullas_ga", "con_ruta")}
+
+
+@app.get("/api/riesgo-punto")
+async def api_riesgo_punto(lat: float = Query(..., ge=-13.0, le=-11.0), lon: float = Query(..., ge=-77.5, le=-76.0)):
+    """Riesgo de la calle más cercana al punto y peligrosidad del distrito donde cae."""
+    u = LOCALIZADOR.ubigeo(lat, lon)
+    cercano = INDICE_RIESGO.mas_cercano(lat, lon)
+    calle = INDICE_RIESGO.describir(*cercano) if cercano else None
+    if u is None and calle is not None:
+        u = calle["ubigeo"]  # punto justo fuera del límite (por ejemplo, en la orilla)
+    return JSONResponse({
+        "lat": lat,
+        "lon": lon,
+        "disponible": INDICE_RIESGO.disponible,
+        "distrito": _info_distrito(u) if u else None,
+        "calle": calle,
+    })
+
+
+@app.get("/api/riesgo-distrito/{ubigeo}")
+async def api_riesgo_distrito(ubigeo: str):
+    """Calles de riesgo medio y alto de un distrito, para pintarlas sobre la ruta."""
+    if ubigeo not in DISTRITO_POR_UBIGEO:
+        raise HTTPException(status_code=404, detail="UBIGEO no encontrado")
+    return JSONResponse(INDICE_RIESGO.tramos_distrito(ubigeo))
+
+
+@app.get("/api/ruta/{ubigeo}")
+async def api_ruta(ubigeo: str):
+    if ubigeo not in RUTAS:
+        raise HTTPException(status_code=404, detail="Este distrito no tiene ruta (peligrosidad baja)")
+    return JSONResponse({
+        **RUTAS[ubigeo],
+        "distrito": _info_distrito(ubigeo),
+        "resumen": [r for r in ESTADO["rutas_piloto"] if r["ubigeo"] == ubigeo],
+    })
 
 
 @app.post("/api/simular-ga")

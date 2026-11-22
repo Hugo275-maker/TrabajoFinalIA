@@ -430,3 +430,96 @@ body { background: #f1f5f9; }
 .insights-list li:first-child {
   border-left-color: #059669;
 }
+/* Riesgo por calle y rutas por distrito */
+.map-clic { cursor: crosshair; }
+.map-clic .leaflet-interactive { cursor: crosshair; }
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: center;
+  margin-top: 0.6rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.leyenda-titulo { font-weight: 600; color: var(--text); }
+.leyenda span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.leyenda i {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 0.15rem;
+  border: 1px solid rgba(15, 23, 42, 0.25);
+}
+.leyenda i.linea { width: 1.4rem; height: 0.25rem; border: none; border-radius: 0.1rem; }
+.leyenda i.discontinua {
+  background: repeating-linear-gradient(90deg, #555 0 0.35rem, transparent 0.35rem 0.55rem);
+}
+
+.panel-riesgo { display: flex; flex-direction: column; gap: 0.8rem; font-size: 0.85rem; }
+.panel-riesgo p { margin: 0; }
+.veredicto {
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+  border-left: 0.3rem solid #94a3b8;
+  background: #f8fafc;
+  line-height: 1.45;
+}
+.veredicto.alto { border-left-color: #b91c1c; background: #fef2f2; }
+.veredicto.medio { border-left-color: #c2410c; background: #fff7ed; }
+.veredicto.bajo { border-left-color: #15803d; background: #f0fdf4; }
+.fila-dato {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+.fila-dato:last-child { border-bottom: none; }
+.fila-dato span:first-child { color: var(--muted); }
+.nivel {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.nivel.alto { background: #b91c1c; color: #fff; }
+.nivel.medio { background: #c2410c; color: #fff; }
+.nivel.bajo { background: #15803d; color: #fff; }
+.barra-riesgo {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #15803d 0%, #15803d 20%, #c2410c 20%, #c2410c 50%, #b91c1c 50%);
+  position: relative;
+  margin: 0.3rem 0 0.1rem;
+}
+.barra-riesgo .marca {
+  position: absolute;
+  top: -0.3rem;
+  width: 0.2rem;
+  height: 1.1rem;
+  background: var(--text);
+  border-radius: 0.1rem;
+  transform: translateX(-50%);
+}
+.nota-metodo { margin-top: 1rem; font-size: 0.78rem; color: var(--muted); }
+.nota-metodo summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.nota-metodo p { margin: 0.5rem 0 0; line-height: 1.5; }
+
+.control-select { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; }
+.control-select label { font-weight: 600; }
+.control-select select {
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+  min-width: 16rem;
+  max-width: 100%;
+  background: var(--surface);
+  color: var(--text);
+}
+.popup-riesgo { font-size: 0.8rem; line-height: 1.45; min-width: 12rem; }
+.popup-riesgo strong { font-size: 0.85rem; }

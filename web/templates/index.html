@@ -22,7 +22,8 @@
         <button class="tab-btn active" data-tab="resumen">Resumen del Sistema</button>
         <button class="tab-btn" data-tab="prediccion">Predicción de Demanda (MLP)</button>
         <button class="tab-btn" data-tab="asignacion">Asignación de Flota (GA)</button>
-        <button class="tab-btn" data-tab="rutas">Rutas Piloto (A*)</button>
+        <button class="tab-btn" data-tab="riesgo">Riesgo por Calle</button>
+        <button class="tab-btn" data-tab="rutas">Rutas de Patrullaje (A*)</button>
       </nav>
     </div>
   </header>
@@ -198,27 +199,68 @@
       </div>
     </section>
 
-    <!-- PESTAÑA 4: RUTAS PILOTO -->
+    <!-- PESTAÑA 4: RIESGO POR CALLE -->
+    <section id="tab-riesgo" class="tab-panel">
+      <div class="two-col wide-left">
+        <div class="card">
+          <div class="card-header">
+            <h2>¿Qué tan peligrosa es esta zona?</h2>
+            <span class="muted">Haz clic en cualquier calle de Lima Metropolitana</span>
+          </div>
+          <div id="map-riesgo" class="map-box map-clic"></div>
+          <div class="leyenda">
+            <span class="leyenda-titulo">Peligrosidad del distrito:</span>
+            <span><i style="background:#fde68a"></i>Baja</span>
+            <span><i style="background:#fb923c"></i>Media</span>
+            <span><i style="background:#dc2626"></i>Alta</span>
+          </div>
+        </div>
+        <div class="card" aria-live="polite">
+          <div class="card-header">
+            <h2>Resultado del punto</h2>
+          </div>
+          <div id="panel-riesgo" class="panel-riesgo">
+            <p class="muted">Todavía no has elegido un punto. Al hacer clic se busca la calle más cercana (hasta 150 m) y se muestra su índice de riesgo y la peligrosidad del distrito.</p>
+          </div>
+          <details class="nota-metodo">
+            <summary>¿Cómo se calcula?</summary>
+            <p><strong>Riesgo de la calle (0 a 1):</strong> suma ponderada de los paraderos, mercados y bancos o cajeros a menos de 100 m del tramo. Los pesos se calibraron con descenso del gradiente contra las denuncias de robo y hurto de los 43 distritos (módulo 03). Bajo &lt; 0,2 · medio 0,2–0,5 · alto ≥ 0,5. Es un índice <em>relativo</em> para priorizar patrullaje, no la probabilidad de sufrir un delito.</p>
+            <p><strong>Peligrosidad del distrito:</strong> denuncias esperadas el mes siguiente (módulo 02) por km², dividida en tercios entre los 43 distritos.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- PESTAÑA 5: RUTAS DE PATRULLAJE -->
     <section id="tab-rutas" class="tab-panel">
       <div class="card rutas-header">
         <div>
           <h2>Trazado Óptimo sobre el Grafo Vial de Lima</h2>
-          <p class="muted">Recorridos piloto desde comisarías clave priorizando tramos de riesgo crítico con el algoritmo A*.</p>
+          <p class="muted">Recorridos desde la comisaría por los puntos críticos del distrito, con el algoritmo A*. Solo los distritos de peligrosidad media y alta tienen ruta.</p>
         </div>
-        <div class="segmented" id="toggle-piloto">
-          <button class="seg-btn active" data-ubigeo="150101">Cercado de Lima (150101)</button>
-          <button class="seg-btn" data-ubigeo="150132">San Juan de Lurigancho (150132)</button>
+        <div class="control-select">
+          <label for="select-ruta">Distrito</label>
+          <select id="select-ruta"></select>
         </div>
       </div>
 
       <div class="two-col wide-left">
-        <div class="card iframe-card">
-          <iframe id="iframe-ruta" src="/mapas/ruta_150101.html" title="Mapa interactivo de ruta A*"></iframe>
+        <div class="card">
+          <div id="map-rutas" class="map-box map-clic"></div>
+          <div class="leyenda">
+            <span><i class="linea" style="background:#d62728"></i>Ruta con riesgo (β = 2)</span>
+            <span><i class="linea discontinua"></i>Ruta más corta (β = 0)</span>
+            <span><i style="background:#e4572e;border-radius:50%"></i>Punto crítico</span>
+            <span><i class="linea" style="background:#f59e0b"></i>Calle de riesgo medio</span>
+            <span><i class="linea" style="background:#7f1d1d"></i>Calle de riesgo alto</span>
+          </div>
+          <p class="muted small-note">Haz clic sobre cualquier calle del mapa para ver su riesgo.</p>
         </div>
         <div class="card">
           <div class="card-header">
             <h2>Sensibilidad de Ruta al Factor de Riesgo (β)</h2>
           </div>
+          <p class="muted small-note" id="info-ruta"></p>
           <p class="muted small-note">Con β = 0.0 se obtiene la ruta más corta; al incrementar β, el algoritmo A* prioriza tramos de mayor riesgo con un alargamiento mínimo.</p>
           <div class="table-scroll">
             <table>
