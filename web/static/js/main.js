@@ -671,6 +671,7 @@ function renderTablaRutas(ubigeo, ruta) {
 
 async function cargarRuta(ubigeo) {
   ubigeoRuta = ubigeo;
+  Patrullero.detener();
   const [respRuta, respCalles] = await Promise.all([
     fetch(`/api/ruta/${ubigeo}`),
     fetch(`/api/riesgo-distrito/${ubigeo}`),
@@ -709,6 +710,7 @@ async function cargarRuta(ubigeo) {
 
   mapRutas.fitBounds(principal.getBounds(), { padding: [30, 30] });
   renderTablaRutas(ubigeo, ruta);
+  Patrullero.recorrer(mapRutas, capaRuta, principal, ruta.puntos);
 }
 
 function initMapaRutas() {

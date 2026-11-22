@@ -523,3 +523,28 @@ body { background: #f1f5f9; }
 }
 .popup-riesgo { font-size: 0.8rem; line-height: 1.45; min-width: 12rem; }
 .popup-riesgo strong { font-size: 0.85rem; }
+
+/* ---------- Patrullero animado en la pestaña de rutas ---------- */
+.pt-patrullero { pointer-events: none; }
+.pt-carro { width: 56px; height: 56px; display: grid; place-items: center; position: relative; transition: transform 0.12s linear; }
+.pt-carro svg { position: relative; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25)); }
+.pt-halo { position: absolute; inset: 0; border-radius: 50%; opacity: 0; }
+.en-marcha .pt-halo { animation: pt-sirena 0.36s steps(1) infinite; opacity: 1; }
+.pt-luz-roja { fill: #5a1414; }
+.pt-luz-azul { fill: #14245a; }
+.en-marcha .pt-luz-roja { animation: pt-roja 0.36s steps(1) infinite; }
+.en-marcha .pt-luz-azul { animation: pt-azul 0.36s steps(1) infinite; }
+@keyframes pt-sirena { 0% { background: radial-gradient(circle, rgba(226, 38, 38, 0.45), rgba(226, 38, 38, 0) 70%); } 50% { background: radial-gradient(circle, rgba(30, 90, 255, 0.45), rgba(30, 90, 255, 0) 70%); } }
+@keyframes pt-roja { 0% { fill: #ef2b2b; } 50% { fill: #5a1414; } }
+@keyframes pt-azul { 0% { fill: #14245a; } 50% { fill: #2f6bff; } }
+.pt-pulso { display: block; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #e4572e; animation: pt-pulso 0.9s ease-out forwards; }
+@keyframes pt-pulso { from { transform: scale(1); opacity: 1; } to { transform: scale(2.6); opacity: 0; } }
+.pt-marcador { position: absolute; left: 50%; top: 0.8rem; transform: translateX(-50%); z-index: 800; background: var(--primary); color: #dbe4ee; padding: 0.4rem 0.9rem; border-radius: var(--radius); font-size: 0.9rem; display: flex; gap: 0.4rem; align-items: baseline; white-space: nowrap; box-shadow: 0 0.2rem 0.8rem rgba(10, 37, 64, 0.25); pointer-events: none; }
+.pt-marcador[hidden] { display: none; }
+.pt-marcador b { color: #fff; font-size: 1.15rem; }
+.pt-marcador span { width: 1px; align-self: stretch; background: #3b5674; margin: 0 0.4rem; }
+.pt-boton { background: var(--surface); border: var(--border-width) solid var(--border); border-radius: var(--radius); padding: 0.4rem 0.7rem; font: 600 0.82rem -apple-system, "Segoe UI", sans-serif; color: var(--primary); cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15); }
+.pt-boton:hover { background: var(--accent-soft); }
+.leyenda i.patrullero-mini { width: 1.4rem; height: 0.7rem; border: 1.5px solid var(--primary); border-radius: 3px; background: linear-gradient(90deg, #fff 38%, #e22626 38% 50%, #1e5aff 50% 62%, #fff 62%); }
+@media (max-width: 40rem) { .pt-marcador { font-size: 0.78rem; top: 0.5rem; } .pt-marcador b { font-size: 1rem; } }
+@media (prefers-reduced-motion: reduce) { .en-marcha .pt-halo, .en-marcha .pt-luz-roja, .en-marcha .pt-luz-azul, .pt-pulso { animation: none; } }
