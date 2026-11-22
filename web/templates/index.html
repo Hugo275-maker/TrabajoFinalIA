@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PatrullaIA — Optimización de Patrullaje en Lima Metropolitana</title>
+  <link rel="icon" type="image/png" href="/static/images/favicon.png" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <img src="/static/images/logo_patrulla_ia.png" alt="Logo PatrullaIA ESAN" class="brand-logo" />
+        <div class="brand-text">
+          <h1>PatrullaIA</h1>
+          <p class="subtitle">Investigación de Inteligencia Artificial · Universidad ESAN · 2026-2</p>
+        </div>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab-btn active" data-tab="resumen">Resumen del Sistema</button>
+        <button class="tab-btn" data-tab="prediccion">Predicción de Demanda (MLP)</button>
+        <button class="tab-btn" data-tab="asignacion">Asignación de Flota (GA)</button>
+        <button class="tab-btn" data-tab="riesgo">Riesgo por Calle</button>
+        <button class="tab-btn" data-tab="rutas">Rutas de Patrullaje (A*)</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- PESTAÑA 1: RESUMEN EJECUTIVO -->
+    <section id="tab-resumen" class="tab-panel active">
+      <div class="kpi-grid">
+        <div class="card kpi">
+          <span class="kpi-label">Demanda Esperada (Mes Sig.)</span>
+          <strong class="kpi-value" id="kpi-denuncias">—</strong>
+          <span class="kpi-meta">Pronóstico provincial mediante red MLP</span>
+        </div>
+        <div class="card kpi">
+          <span class="kpi-label">Flota Operativa (P)</span>
+          <strong class="kpi-value" id="kpi-flota">—</strong>
+          <span class="kpi-meta">Camionetas y autos · RENAMU 2026</span>
+        </div>
+        <div class="card kpi">
+          <span class="kpi-label">Cobertura Real (RENAMU)</span>
+          <strong class="kpi-value neutral" id="kpi-renamu">—</strong>
+          <span class="kpi-meta">Distribución municipal vigente</span>
+        </div>
+        <div class="card kpi highlight">
+          <span class="kpi-label">Cobertura PatrullaIA (GA)</span>
+          <strong class="kpi-value success" id="kpi-ga">—</strong>
+          <span class="kpi-meta success-text" id="kpi-ganancia">—</span>
+        </div>
+      </div>
+
+      <div class="card pipeline-card">
+        <div class="card-header">
+          <h2>Arquitectura de Inteligencia de Seguridad Ciudadana</h2>
+          <span class="badge">Pipeline End-to-End</span>
+        </div>
+        <div class="pipeline">
+          <div class="step">
+            <span class="step-num">01</span>
+            <h3>Predicción (MLP)</h3>
+            <p>Modelado de series temporales de denuncias MININTER por cada UBIGEO.</p>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <span class="step-num">02</span>
+            <h3>Asignación (GA)</h3>
+            <p>Distribución de recursos maximizando la cobertura con operadores de reparación.</p>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <span class="step-num">03</span>
+            <h3>Riesgo (Gradiente)</h3>
+            <p>Estimación del índice de riesgo de vías mediante calibración RTM sobre OSM.</p>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <span class="step-num">04</span>
+            <h3>Operaciones (A*)</h3>
+            <p>Navegación táctica sobre el grafo de vías optimizando seguridad frente a distancia.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <h2>Evaluación de la Aptitud Global F(x)</h2>
+            <span class="muted">Parámetros oficiales (P = 1,187, α = 0.45)</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="chart-estrategias"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Resultados e Inferencias de Investigación</h2>
+          </div>
+          <ul class="insights-list" id="lista-hallazgos">
+            <li>Analizando bases de datos del sistema...</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- PESTAÑA 2: PREDICCIÓN -->
+    <section id="tab-prediccion" class="tab-panel">
+      <div class="two-col wide-left">
+        <div class="card">
+          <div class="card-header">
+            <h2>Mapa de Demanda Delictiva Estimada</h2>
+            <div class="segmented" id="toggle-pred-metric">
+              <button class="seg-btn active" data-metric="d_esperadas">Total Denuncias</button>
+              <button class="seg-btn" data-metric="densidad">Densidad (Denuncias / km²)</button>
+            </div>
+          </div>
+          <div id="map-prediccion" class="map-box"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Distribución por UBIGEO (43 Distritos)</h2>
+            <input type="search" id="buscar-distrito" class="search-input" placeholder="Filtrar distrito..." />
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Distrito (UBIGEO)</th>
+                  <th class="num">Área (km²)</th>
+                  <th class="num">Pronóstico MLP</th>
+                  <th class="num">Densidad</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-prediccion"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PESTAÑA 3: ASIGNACIÓN (ALGORITMO GENÉTICO) -->
+    <section id="tab-asignacion" class="tab-panel">
+      <div class="card sim-bar">
+        <div class="sim-controls">
+          <div class="control">
+            <label for="input-flota">Restricción de Flota (P): <strong id="lbl-flota">1187</strong></label>
+            <input type="range" id="input-flota" min="300" max="2200" step="10" value="1187" />
+          </div>
+          <div class="control">
+            <label for="input-alpha">Radio Efectivo (α): <strong id="lbl-alpha">0.45</strong></label>
+            <input type="range" id="input-alpha" min="0.20" max="1.20" step="0.05" value="0.45" />
+          </div>
+          <div class="control">
+            <label for="input-epochs">Generaciones (G): <strong id="lbl-epochs">120</strong></label>
+            <input type="range" id="input-epochs" min="40" max="200" step="20" value="120" />
+          </div>
+          <div class="sim-actions">
+            <button id="btn-simular" class="btn-primary">Ejecutar GA</button>
+            <button id="btn-reset" class="btn-secondary">Restaurar Modelo</button>
+          </div>
+        </div>
+        <div class="sim-status" id="sim-status">Mostrando solución oficial guardada en <code>reparto_patrullas.csv</code>.</div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <h2>Asignación de Recursos de Vigilancia</h2>
+            <div class="segmented" id="toggle-ga-map">
+              <button class="seg-btn active" data-layer="patrullas_ga">Asignación GA</button>
+              <button class="seg-btn" data-layer="patrullas_renamu">Uso Real RENAMU</button>
+              <button class="seg-btn" data-layer="brecha">Brecha Comparativa</button>
+            </div>
+          </div>
+          <div id="map-ga" class="map-box"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Top 15 Distritos: Reasignación vs. Histórico</h2>
+          </div>
+          <div class="chart-wrap tall">
+            <canvas id="chart-top15"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Historial de Convergencia del Algoritmo Genético</h2>
+          <span class="muted" id="lbl-conv-meta">Población M = 80 · Torneo k = 3 · Elitismo (2 mejores) · Cruce Uniforme</span>
+        </div>
+        <div class="chart-wrap short">
+          <canvas id="chart-convergencia"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- PESTAÑA 4: RIESGO POR CALLE -->
+    <section id="tab-riesgo" class="tab-panel">
+      <div class="two-col wide-left">
+        <div class="card">
+          <div class="card-header">
+            <h2>¿Qué tan peligrosa es esta zona?</h2>
+            <span class="muted">Haz clic en cualquier calle de Lima Metropolitana</span>
+          </div>
+          <div id="map-riesgo" class="map-box map-clic"></div>
+          <div class="leyenda">
+            <span class="leyenda-titulo">Peligrosidad del distrito:</span>
+            <span><i style="background:#fde68a"></i>Baja</span>
+            <span><i style="background:#fb923c"></i>Media</span>
+            <span><i style="background:#dc2626"></i>Alta</span>
+          </div>
+        </div>
+        <div class="card" aria-live="polite">
+          <div class="card-header">
+            <h2>Resultado del punto</h2>
+          </div>
+          <div id="panel-riesgo" class="panel-riesgo">
+            <p class="muted">Todavía no has elegido un punto. Al hacer clic se busca la calle más cercana (hasta 150 m) y se muestra su índice de riesgo y la peligrosidad del distrito.</p>
+          </div>
+          <details class="nota-metodo">
+            <summary>¿Cómo se calcula?</summary>
+            <p><strong>Riesgo de la calle (0 a 1):</strong> suma ponderada de los paraderos, mercados y bancos o cajeros a menos de 100 m del tramo. Los pesos se calibraron con descenso del gradiente contra las denuncias de robo y hurto de los 43 distritos (módulo 03). Bajo &lt; 0,2 · medio 0,2–0,5 · alto ≥ 0,5. Es un índice <em>relativo</em> para priorizar patrullaje, no la probabilidad de sufrir un delito.</p>
+            <p><strong>Peligrosidad del distrito:</strong> denuncias esperadas el mes siguiente (módulo 02) por km², dividida en tercios entre los 43 distritos.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- PESTAÑA 5: RUTAS DE PATRULLAJE -->
+    <section id="tab-rutas" class="tab-panel">
+      <div class="card rutas-header">
+        <div>
+          <h2>Trazado Óptimo sobre el Grafo Vial de Lima</h2>
+          <p class="muted">Recorridos desde la comisaría por los puntos críticos del distrito, con el algoritmo A*. Solo los distritos de peligrosidad media y alta tienen ruta.</p>
+        </div>
+        <div class="control-select">
+          <label for="select-ruta">Distrito</label>
+          <select id="select-ruta"></select>
+        </div>
+      </div>
+
+      <div class="two-col wide-left">
+        <div class="card">
+          <div id="map-rutas" class="map-box map-clic"></div>
+          <div class="leyenda">
+            <span><i class="linea" style="background:#d62728"></i>Ruta con riesgo (β = 2)</span>
+            <span><i class="linea discontinua"></i>Ruta más corta (β = 0)</span>
+            <span><i style="background:#e4572e;border-radius:50%"></i>Punto crítico</span>
+            <span><i class="linea" style="background:#f59e0b"></i>Calle de riesgo medio</span>
+            <span><i class="linea" style="background:#7f1d1d"></i>Calle de riesgo alto</span>
+          </div>
+          <p class="muted small-note">Haz clic sobre cualquier calle del mapa para ver su riesgo.</p>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Sensibilidad de Ruta al Factor de Riesgo (β)</h2>
+          </div>
+          <p class="muted small-note" id="info-ruta"></p>
+          <p class="muted small-note">Con β = 0.0 se obtiene la ruta más corta; al incrementar β, el algoritmo A* prioriza tramos de mayor riesgo con un alargamiento mínimo.</p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th class="num">β (Parámetro)</th>
+                  <th class="num">Longitud (km)</th>
+                  <th class="num">Riesgo Promedio</th>
+                  <th class="num">Recorrido Crítico (&gt;0.5)</th>
+                  <th class="num">Tiempo CPU (s)</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-rutas"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    PatrullaIA · Investigación de Sistemas Inteligentes y Algoritmos Genéticos · Universidad ESAN · 2026-2
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="/static/js/main.js"></script>
+</body>
+</html>
